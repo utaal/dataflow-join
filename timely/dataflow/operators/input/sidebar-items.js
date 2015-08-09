@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["InputHelper","Manages the movement of data into the dataflow from the outside world."],["Operator",""]],"trait":[["Input",""]]});

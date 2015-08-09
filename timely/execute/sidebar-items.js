@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["execute","Executes a timely dataflow from a configuration and per-communicator logic."],["execute_from_args","Executes a timely dataflow from supplied arguments and per-communicator logic."]]});
