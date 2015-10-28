@@ -34,7 +34,8 @@ fn main () {
             let triangles = stream.extend(vec![&graph.extend_using(|&a| a as u64)])
                                   .flat_map(|(p, es)| es.into_iter().map(move |e| (p, e)))
                                   .extend(vec![&graph.extend_using(|&(a,_)| a as u64),
-                                               &graph.extend_using(|&(_,b)| b as u64)]);
+                                               &graph.extend_using(|&(_,b)| b as u64)])
+                                  .flat_map(|((a, b), cs)| cs.into_iter().map(move |c| (a, b, c)));
 
             // // Quads
             // triangles.flat_map(|(p,es)| es.into_iter().map(move |e| (p, e)))
@@ -42,7 +43,7 @@ fn main () {
             //                       &graph.extend_using(|&((_,b),_)| b as u64),
             //                       &graph.extend_using(|&((_,_),c)| c as u64)]);
 
-            if inspect { triangles.inspect(|x| println!("triangles: {:?}", x)); }
+            if inspect { triangles.inspect(|&(a, b, c)| println!("{},{},{}", a, b, c)); }
 
             input
         });
