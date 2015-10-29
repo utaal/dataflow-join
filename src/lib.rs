@@ -15,6 +15,7 @@ use timely::drain::DrainExt;
 
 pub mod graph;
 mod typedrw;
+pub mod chunked_map;
 // pub mod flattener;
 
 pub use typedrw::TypedMemoryMap;

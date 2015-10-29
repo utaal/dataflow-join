@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use dataflow_join::*;
 use dataflow_join::graph::{GraphTrait, GraphMMap, GraphExtenderExt};
+use dataflow_join::chunked_map::ChunkedMap;
 
 use timely::dataflow::*;
 use timely::dataflow::operators::*;
@@ -25,6 +26,7 @@ fn main () {
         let peers = root.peers();
 
         let graph = Rc::new(GraphMMap::<u32>::new(&filename));
+        println!("{}", graph.nodes());
 
         let mut input = root.scoped(|builder| {
 
@@ -32,10 +34,10 @@ fn main () {
 
             // extend u32s to pairs, then pairs to triples.
             let triangles = stream.extend(vec![&graph.extend_using(|&a| a as u64)])
-                                  .flat_map(|(p, es)| es.into_iter().map(move |e| (p, e)))
+                                  .chunked_flat_map(|(p, es)| es.into_iter().map(move |e| (p, e)))
                                   .extend(vec![&graph.extend_using(|&(a,_)| a as u64),
                                                &graph.extend_using(|&(_,b)| b as u64)])
-                                  .flat_map(|((a, b), cs)| cs.into_iter().map(move |c| (a, b, c)));
+                                  .chunked_flat_map(|((a, b), cs)| cs.into_iter().map(move |c| (a, b, c)));
 
             // // Quads
             // triangles.flat_map(|(p,es)| es.into_iter().map(move |e| (p, e)))
