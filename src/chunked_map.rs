@@ -7,6 +7,8 @@ use std::ops::RangeFull;
 use std::fmt::Debug;
 use std::collections::LinkedList;
 use std::iter::FromIterator;
+use std::cell::RefCell;
+
 
 use timely::dataflow::channels::Content;
 use timely::dataflow::{Stream, Scope};
@@ -29,37 +31,39 @@ pub trait ChunkedMap<S: Scope, D: Data> {
     ///            .inspect(|x| println!("seen: {:?}", x));
     /// });
     /// ```
-    fn chunked_flat_map<I: Iterator, L: Fn(D)->I+'static>(&self, logic: L) -> Stream<S, I::Item> where I::Item: Data, D: Debug, I::Item: Debug;
+    fn chunked_flat_map<I: Iterator, L: Fn(D)->I+'static>(&self, logic: L) -> Stream<S, I::Item> where I::Item: Data, D: Debug, I::Item: Debug, I: 'static;
 }
 
 impl<S: Scope, D: Data> ChunkedMap<S, D> for Stream<S, D> {
     fn chunked_flat_map<I: Iterator, L: Fn(D)->I+'static>(&self, logic: L) -> Stream<S, I::Item>
-    where I::Item: Data, D: Debug, I::Item: Debug {
-        let mut stashed_time: Option<S::Timestamp> = None;
-        let mut in_data = LinkedList::<D>::new();
-        let mut out_data = LinkedList::<I::Item>::new();
+    where I::Item: Data, D: Debug, I::Item: Debug, I: 'static {
+        let mut stashed: Box<Option<(S::Timestamp, LinkedList<I>)>> = Box::new(None);
         self.unary_stream(Pipeline, "ChunkedFlatMap", move |input, output| {
-            for _ in 0..100 {
-                match stashed_time {
-                    Some(t) => {
-                        let out_datum: Option<I::Item> = if let Some(datum) = out_data.pop_front() {
-                            Some(datum)
-                        } else if let Some(x) = in_data.pop_front() {
-                            out_data = logic(x).collect::<LinkedList<I::Item>>();
-                            out_data.pop_front()
-                        } else {
-                            stashed_time = None;
-                            break;
-                            None
-                        };
-                        if let Some(datum) = out_datum {
-                            output.session(&t).give(datum);
-                        }
-                    },
-                    None => if let Some((time, data)) = input.next() {
-                        in_data = data.drain_temp().collect::<LinkedList<D>>();
-                        stashed_time = Some((*time).clone());
+            let mut remaining = 100;
+            while remaining > 0 {
+                if let None = *stashed {
+                    *stashed = input.next().and_then(|(time, data)| {
+                        let mut iterators: LinkedList<I> = data.drain_temp().map(|x| logic(x)).collect();
+                        Some(((*time).clone(), iterators))
+                    });
+                    if let None = *stashed {
+                        return;
                     }
+                };
+                let mut stashed_valid: bool = true;
+                if let Some((time, ref mut iterators)) = *stashed {
+                    if let Some(mut it) = iterators.pop_front() {
+                        if let Some(datum) = it.next() {
+                            output.session(&time).give(datum);
+                            iterators.push_front(it);
+                            remaining -= 1;
+                        };
+                    } else {
+                        stashed_valid = false;
+                    };
+                };
+                if !stashed_valid {
+                    *stashed = None;
                 }
             }
         })

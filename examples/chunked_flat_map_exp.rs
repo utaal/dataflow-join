@@ -32,7 +32,7 @@ fn main () {
 
         for i in 0..100 {
             input.send(i);
-            if (i % 10 == 0) {
+            if (i % 10 == 9) {
                 input.advance_to((i / 10) as u64 + 1);
             }
             root.step();
