@@ -34,10 +34,10 @@ fn main () {
 
             // extend u32s to pairs, then pairs to triples.
             let triangles = stream.extend(vec![&graph.extend_using(|&a| a as u64)])
-                                  .chunked_flat_map(|(p, es)| es.into_iter().map(move |e| (p, e)))
+                                  .chunked_flat_map(1000, |(p, es)| es.into_iter().map(move |e| (p, e)))
                                   .extend(vec![&graph.extend_using(|&(a,_)| a as u64),
                                                &graph.extend_using(|&(_,b)| b as u64)])
-                                  .chunked_flat_map(|((a, b), cs)| cs.into_iter().map(move |c| (a, b, c)));
+                                  .chunked_flat_map(1000, |((a, b), cs)| cs.into_iter().map(move |c| (a, b, c)));
 
             // // Quads
             // triangles.flat_map(|(p,es)| es.into_iter().map(move |e| (p, e)))

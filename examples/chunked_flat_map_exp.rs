@@ -22,7 +22,7 @@ fn main () {
 
             let (input, stream) = builder.new_input::<u32>();
 
-            let flatmapped = stream.chunked_flat_map(|i| vec![(i, i + 1), (i, i + 2), (i, i + 3)].into_iter());
+            let flatmapped = stream.chunked_flat_map(10, |a| (0..100).map(move |b| (a, a + b)));
 
             flatmapped.inspect(|&(a, b)| println!("{},{}", a, b));
 

@@ -31,39 +31,46 @@ pub trait ChunkedMap<S: Scope, D: Data> {
     ///            .inspect(|x| println!("seen: {:?}", x));
     /// });
     /// ```
-    fn chunked_flat_map<I: Iterator, L: Fn(D)->I+'static>(&self, logic: L) -> Stream<S, I::Item> where I::Item: Data, D: Debug, I::Item: Debug, I: 'static;
+    fn chunked_flat_map<I: Iterator, L: Fn(D)->I+'static>(&self, chunk_size: usize, logic: L) -> Stream<S, I::Item> where I::Item: Data, I: 'static;
 }
 
 impl<S: Scope, D: Data> ChunkedMap<S, D> for Stream<S, D> {
-    fn chunked_flat_map<I: Iterator, L: Fn(D)->I+'static>(&self, logic: L) -> Stream<S, I::Item>
-    where I::Item: Data, D: Debug, I::Item: Debug, I: 'static {
-        let mut stashed: Box<Option<(S::Timestamp, LinkedList<I>)>> = Box::new(None);
+    fn chunked_flat_map<I: Iterator, L: Fn(D)->I+'static>(&self, chunk_size: usize, logic: L) -> Stream<S, I::Item>
+    where I::Item: Data, I: 'static {
+        let mut stash: Box<Option<(S::Timestamp, LinkedList<I>)>> = Box::new(None);
         self.unary_stream(Pipeline, "ChunkedFlatMap", move |input, output| {
-            let mut remaining = 100;
+            let mut remaining: usize = chunk_size;
             while remaining > 0 {
-                if let None = *stashed {
-                    *stashed = input.next().and_then(|(time, data)| {
+                if let None = *stash {
+                    *stash = input.next().and_then(|(time, data)| {
                         let mut iterators: LinkedList<I> = data.drain_temp().map(|x| logic(x)).collect();
                         Some(((*time).clone(), iterators))
                     });
-                    if let None = *stashed {
+                    if let None = *stash {
                         return;
                     }
                 };
-                let mut stashed_valid: bool = true;
-                if let Some((time, ref mut iterators)) = *stashed {
+                let mut stash_exhausted: bool = true;
+                if let Some((time, ref mut iterators)) = *stash {
                     if let Some(mut it) = iterators.pop_front() {
-                        if let Some(datum) = it.next() {
-                            output.session(&time).give(datum);
-                            iterators.push_front(it);
-                            remaining -= 1;
+                        let size_hint = it.size_hint();
+                        let to_take = remaining;
+                        remaining -= match size_hint {
+                            (_, Some(sh)) => {
+                                if sh > remaining { remaining } else { sh }
+                            },
+                            (_, None) => remaining
                         };
+                        output.session(&time).give_iterator(it.by_ref().take(to_take).into_iter());
+                        if it.by_ref().peekable().peek().is_some() {
+                            iterators.push_front(it);
+                        }
                     } else {
-                        stashed_valid = false;
+                        stash_exhausted = false;
                     };
                 };
-                if !stashed_valid {
-                    *stashed = None;
+                if !stash_exhausted {
+                    *stash = None;
                 }
             }
         })
