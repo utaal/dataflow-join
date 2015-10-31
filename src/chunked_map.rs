@@ -37,21 +37,21 @@ pub trait ChunkedMap<S: Scope, D: Data> {
 impl<S: Scope, D: Data> ChunkedMap<S, D> for Stream<S, D> {
     fn chunked_flat_map<I: Iterator, L: Fn(D)->I+'static>(&self, chunk_size: usize, logic: L) -> Stream<S, I::Item>
     where I::Item: Data, I: 'static {
-        let mut stash: Box<Option<(S::Timestamp, LinkedList<I>)>> = Box::new(None);
+        let mut stash: Option<(S::Timestamp, LinkedList<I>)> = None;
         self.unary_stream(Pipeline, "ChunkedFlatMap", move |input, output| {
             let mut remaining: usize = chunk_size;
             while remaining > 0 {
-                if let None = *stash {
-                    *stash = input.next().and_then(|(time, data)| {
+                if stash.is_none() {
+                    stash = input.next().and_then(|(time, data)| {
                         let mut iterators: LinkedList<I> = data.drain_temp().map(|x| logic(x)).collect();
                         Some(((*time).clone(), iterators))
                     });
-                    if let None = *stash {
+                    if stash.is_none() {
                         return;
                     }
                 };
                 let mut stash_exhausted: bool = true;
-                if let Some((time, ref mut iterators)) = *stash {
+                if let &mut Some((time, ref mut iterators)) = &mut stash {
                     if let Some(mut it) = iterators.pop_front() {
                         let size_hint = it.size_hint();
                         let to_take = remaining;
@@ -70,7 +70,7 @@ impl<S: Scope, D: Data> ChunkedMap<S, D> for Stream<S, D> {
                     };
                 };
                 if !stash_exhausted {
-                    *stash = None;
+                    stash = None;
                 }
             }
         })
