@@ -50,26 +50,30 @@ impl<S: Scope, D: Data> ChunkedMap<S, D> for Stream<S, D> {
                         return;
                     }
                 };
-                let mut stash_exhausted: bool = true;
+                let mut stash_exhausted: bool = false;
                 if let &mut Some((time, ref mut iterators)) = &mut stash {
-                    if let Some(mut it) = iterators.pop_front() {
-                        let size_hint = it.size_hint();
-                        let to_take = remaining;
-                        remaining -= match size_hint {
-                            (_, Some(sh)) => {
-                                if sh > remaining { remaining } else { sh }
-                            },
-                            (_, None) => remaining
+                    if iterators.front().is_some() {
+                        let iterator_exhausted = {
+                            let it = iterators.front_mut().unwrap();
+                            let size_hint = it.size_hint();
+                            let to_take = remaining;
+                            remaining -= match size_hint {
+                                (_, Some(sh)) => {
+                                    if sh > remaining { remaining } else { sh }
+                                },
+                                (_, None) => remaining
+                            };
+                            output.session(&time).give_iterator(it.by_ref().take(to_take).into_iter());
+                            it.by_ref().peekable().peek().is_none()
                         };
-                        output.session(&time).give_iterator(it.by_ref().take(to_take).into_iter());
-                        if it.by_ref().peekable().peek().is_some() {
-                            iterators.push_front(it);
+                        if iterator_exhausted {
+                            iterators.pop_front();
                         }
                     } else {
-                        stash_exhausted = false;
+                        stash_exhausted = true;
                     };
                 };
-                if !stash_exhausted {
+                if stash_exhausted {
                     stash = None;
                 }
             }
