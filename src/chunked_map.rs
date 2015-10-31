@@ -44,7 +44,7 @@ impl<S: Scope, D: Data> ChunkedMap<S, D> for Stream<S, D> {
                 if stash.is_none() {
                     stash = input.next().and_then(|(time, data)| {
                         let mut iterators: LinkedList<I> = data.drain_temp().map(|x| logic(x)).collect();
-                        Some(((*time).clone(), iterators))
+                        Some((*time, iterators))
                     });
                     if stash.is_none() {
                         return;
@@ -52,26 +52,29 @@ impl<S: Scope, D: Data> ChunkedMap<S, D> for Stream<S, D> {
                 };
                 let mut stash_exhausted: bool = false;
                 if let &mut Some((time, ref mut iterators)) = &mut stash {
-                    if iterators.front().is_some() {
-                        let iterator_exhausted = {
-                            let it = iterators.front_mut().unwrap();
-                            let size_hint = it.size_hint();
-                            let to_take = remaining;
-                            remaining -= match size_hint {
-                                (_, Some(sh)) => {
-                                    if sh > remaining { remaining } else { sh }
-                                },
-                                (_, None) => remaining
+                    while remaining > 0 {
+                        if iterators.front().is_some() {
+                            let iterator_exhausted = {
+                                let it = iterators.front_mut().unwrap();
+                                let size_hint = it.size_hint();
+                                let to_take = remaining;
+                                remaining -= match size_hint {
+                                    (_, Some(sh)) => {
+                                        if sh > remaining { remaining } else { sh }
+                                    },
+                                    (_, None) => remaining
+                                };
+                                output.session(&time).give_iterator(it.take(to_take).into_iter());
+                                it.peekable().peek().is_none()
                             };
-                            output.session(&time).give_iterator(it.by_ref().take(to_take).into_iter());
-                            it.by_ref().peekable().peek().is_none()
+                            if iterator_exhausted {
+                                iterators.pop_front();
+                            }
+                        } else {
+                            stash_exhausted = true;
+                            break;
                         };
-                        if iterator_exhausted {
-                            iterators.pop_front();
-                        }
-                    } else {
-                        stash_exhausted = true;
-                    };
+                    }
                 };
                 if stash_exhausted {
                     stash = None;
